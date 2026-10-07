@@ -1,0 +1,634 @@
+<title>NFL DFS Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Saira+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: sideline control panel on the left, results on the right; scoreboard header with yard-line hash marks */
+:root{
+  --bg:#edf0f3; --surface:#ffffff; --sunk:#e4e9ee; --ink:#132030; --muted:#58697a; --line:#d3dae2;
+  --accent:#1f5fd1; --accent-ink:#ffffff; --accent-soft:#dde8fb;
+  --bb:#b4560f; --bb-soft:#f8e6d6; --sec:#6b4bb8; --sec-soft:#ebe4f8;
+  --good:#1b7a4a; --good-soft:#dcf1e5; --bad:#b4332b; --bad-soft:#f8dedb; --warn:#9a6a00;
+  --f-display:"Saira Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0c131b; --surface:#141f2b; --sunk:#0f1923; --ink:#e4ebf2; --muted:#8e9fb2; --line:#243447;
+  --accent:#6ea2ff; --accent-ink:#06142e; --accent-soft:#16284a; --bb:#f0a060; --bb-soft:#3a2617; --sec:#b39cf0; --sec-soft:#271f40;
+  --good:#4fc68a; --good-soft:#12321f; --bad:#f17c73; --bad-soft:#3a1a18; --warn:#e2b44a; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0c131b; --surface:#141f2b; --sunk:#0f1923; --ink:#e4ebf2; --muted:#8e9fb2; --line:#243447;
+  --accent:#6ea2ff; --accent-ink:#06142e; --accent-soft:#16284a; --bb:#f0a060; --bb-soft:#3a2617; --sec:#b39cf0; --sec-soft:#271f40;
+  --good:#4fc68a; --good-soft:#12321f; --bad:#f17c73; --bad-soft:#3a1a18; --warn:#e2b44a; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.45}
+.wrap{max-width:1400px;margin:0 auto;padding-inline:16px;padding-block:20px 48px;display:flex;flex-direction:column;gap:16px}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px;padding-bottom:14px;position:relative}
+.top::after{content:"";position:absolute;left:0;right:0;bottom:0;height:8px;
+  background:repeating-linear-gradient(90deg,var(--line) 0 2px,transparent 2px 24px),linear-gradient(var(--line),var(--line)) bottom/100% 1px no-repeat}
+.brand h1{font-family:var(--f-display);font-weight:700;font-size:clamp(30px,5vw,46px);line-height:.95;letter-spacing:.01em;text-transform:uppercase;margin:0;text-wrap:balance}
+.brand h1 span{color:var(--accent)}
+.brand p{margin:6px 0 0;color:var(--muted);font-size:13px;max-width:80ch}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:8px 14px;cursor:pointer;font-weight:500}
+.btn:hover{border-color:var(--muted)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-weight:700;font-size:18px;letter-spacing:.06em;text-transform:uppercase;padding:9px 22px}
+.btn-primary:hover{filter:brightness(1.07);border-color:var(--accent)}
+.btn:disabled{opacity:.55;cursor:progress}
+.btn-refresh{font-weight:600;padding:9px 14px}
+.btn-refresh span{display:inline-block;font-size:16px;line-height:1}
+.btn-refresh.spin span{animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.slate{display:flex;gap:8px;overflow-x:auto;padding-bottom:2px}
+.game{flex:0 0 auto;display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 11px;font-size:13px}
+.game b{font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:.03em}
+.game .imp{font-family:var(--f-mono);color:var(--muted);font-size:12px}
+.game .ou{font-family:var(--f-mono);font-size:12px;border-left:1px solid var(--line);padding-left:8px}
+.game.hl{border-color:var(--bb)}
+.miss{color:var(--bad);font-weight:600}
+.ed.missing{border-color:var(--bad)}
+.ed.missing::placeholder{color:var(--bad);opacity:1}
+.pill.warn{background:var(--bb-soft);color:var(--bb)}
+.game.hl .ou{color:var(--bb)}
+
+.main{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}
+@media (max-width:920px){.main{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:11px}
+.panel h2{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:15px;font-weight:700;margin:0;color:var(--muted)}
+.panel h3{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:4px 0 0;padding-top:10px;border-top:1px dashed var(--line);font-weight:600}
+.fld{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fld label{font-size:13px;font-weight:500;display:flex;justify-content:space-between;gap:8px}
+.fld label output{font-family:var(--f-mono);color:var(--accent);font-weight:500}
+.fld small{color:var(--muted);font-size:12px}
+.fld input[type=number]::placeholder{color:var(--muted)}
+.fld input[type=number],.fld select{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%;min-width:0}
+.fld input.dateIn{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%;min-width:0;font-family:var(--f-mono)}
+#slateInfo b{color:var(--ink)}
+#slateInfo .warn{color:var(--warn)}
+.fld input[type=range]{accent-color:var(--accent);width:100%}
+.check{display:flex;gap:8px;align-items:flex-start;font-size:13px}
+.check input{accent-color:var(--accent);margin-top:3px}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.seg.site{display:flex}
+.seg.site button{flex:1;padding:8px 6px;font-family:var(--f-display);font-size:16px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.lbl{font-size:13px;font-weight:500}
+.lines{max-width:none;margin-bottom:14px}
+.lines-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px}
+.eyebrow{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);font-weight:600;margin-bottom:4px}
+.lines input[type=date],.lines input[type=text]{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;font-family:var(--f-mono);font-size:13px;min-width:0}
+.lines textarea{min-height:110px}
+.src{font-size:11px;border-radius:3px;padding:1px 6px;white-space:nowrap}
+.src.manual{background:var(--bb-soft);color:var(--bb)} .src.imported{background:var(--accent-soft);color:var(--accent)} .src.base{background:var(--sunk);color:var(--muted)}
+.ed.ov{border-color:var(--bb);color:var(--bb)}
+.rep dd{font-size:22px}
+.warnv{color:var(--warn);font-weight:600}
+.badv{color:var(--bad)}
+.mapbox{display:flex;flex-direction:column;gap:10px;border-top:1px dashed var(--line);padding-top:12px}
+.maph{font-size:11px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);margin:0;font-weight:600}
+.mapgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.mapgrid select{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%;min-width:0}
+.mapgrid .fld.req label{color:var(--ink)}
+.mapgrid .fld.set select{border-color:var(--accent)}
+td .ok{color:var(--good)} td .no{color:var(--bad)}
+.badge{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;border-radius:3px;padding:2px 7px;background:var(--accent-soft);color:var(--accent);margin-left:8px;vertical-align:2px}
+.row5{display:grid;grid-template-columns:repeat(5,1fr);gap:6px}
+.row5 .fld label{font-size:11px;justify-content:center}
+.row5 input{text-align:center;padding:5px 2px!important}
+.cite{font-size:11px;color:var(--muted);font-style:italic}
+
+.content{display:flex;flex-direction:column;gap:12px;min-width:0}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{background:none;border:0;border-bottom:3px solid transparent;padding:8px 13px;cursor:pointer;font-family:var(--f-display);font-size:17px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+.status{display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--muted)}
+.status.err{color:var(--bad)}
+.status.stale{color:var(--warn)}
+.bar{height:4px;background:var(--sunk);border-radius:2px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);width:0;transition:width .15s}
+
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.summary div{background:var(--surface);padding:10px 14px}
+.summary dt{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
+.summary dd{margin:2px 0 0;font-family:var(--f-display);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.toolbar .grp{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--line);border-radius:6px;overflow:hidden;background:var(--surface)}
+.seg button{border:0;background:none;padding:5px 10px;cursor:pointer;font-size:13px;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.legend{font-size:12px;color:var(--muted);display:flex;gap:12px;flex-wrap:wrap}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.note{font-size:12px;color:var(--muted)}
+
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;display:flex;flex-direction:column}
+.card header{display:flex;justify-content:space-between;align-items:baseline;padding:10px 12px 4px;gap:8px}
+.card header b{font-family:var(--f-display);font-size:20px;font-weight:700}
+.card header span{font-family:var(--f-mono);font-size:12px;color:var(--muted)}
+.plan{display:flex;flex-wrap:wrap;gap:4px;padding:0 12px 8px}
+.tag{font-size:11px;border-radius:3px;padding:1px 6px;background:var(--sunk);color:var(--muted);white-space:nowrap}
+.tag.a{background:var(--accent-soft);color:var(--accent)}
+.tag.b{background:var(--bb-soft);color:var(--bb)}
+.tag.s{background:var(--sec-soft);color:var(--sec)}
+.tag.up{background:var(--good-soft);color:var(--good)}
+.tag.dn{background:var(--bad-soft);color:var(--bad)}
+.kpis{display:grid;grid-template-columns:repeat(5,1fr);border-block:1px solid var(--line);background:var(--sunk)}
+.kpis div{padding:6px 4px;text-align:center}
+.kpis dt{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.kpis dd{margin:0;font-family:var(--f-mono);font-size:13px;font-weight:500}
+.kpis .hot dd{color:var(--accent)}
+.plist{list-style:none;margin:0;padding:6px 0}
+.plist li{display:grid;grid-template-columns:38px minmax(0,1fr) 34px 40px 46px;gap:6px;padding:3px 12px;font-size:13px;align-items:center}
+.plist .pos{font-family:var(--f-display);font-weight:600;color:var(--muted);letter-spacing:.04em}
+.plist .nm{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.plist .tm,.plist .sl,.plist .ow{font-family:var(--f-mono);font-size:12px;color:var(--muted);text-align:right}
+.plist li.qb,.plist li.stk{background:var(--accent-soft)}
+.plist li.qb .nm,.plist li.stk .nm{color:var(--accent);font-weight:500}
+.plist li.bb{background:var(--bb-soft)}
+.plist li.bb .nm{color:var(--bb);font-weight:500}
+.plist li.sec{background:var(--sec-soft)}
+.plist li.sec .nm{color:var(--sec);font-weight:500}
+.swapbtn{background:none;border:0;padding:0;text-align:left;cursor:pointer;font:inherit;color:inherit;text-decoration:underline dotted var(--muted);text-underline-offset:3px}
+.swapbtn:hover{color:var(--accent)}
+.plist li.badp{background:var(--bad-soft)}
+.valerr{margin:0 12px 8px;padding:6px 8px;border-radius:5px;background:var(--bad-soft);color:var(--bad);font-size:12px}
+.exp{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px}
+.exp h3{margin:0;font-family:var(--f-display);font-size:18px;text-transform:uppercase;letter-spacing:.04em}
+.exp .row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.exp select,.exp input[type=file]{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;max-width:100%}
+.exp .ok{color:var(--good)} .exp .bad{color:var(--bad)}
+.exp ul{margin:0;padding-left:18px;font-size:13px;color:var(--bad)}
+.btn-dl{background:var(--good);border-color:var(--good);color:var(--surface);font-family:var(--f-display);font-weight:700;font-size:17px;letter-spacing:.05em;text-transform:uppercase;padding:9px 18px}
+.btn-dl:hover{filter:brightness(1.07);border-color:var(--good)}
+.sbar{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:10px}
+ul.chk{list-style:none;padding:0;margin:6px 0;columns:2;font-size:13px}ul.chk li{break-inside:avoid;padding:1px 0}ul.chk li.y{color:var(--good)}ul.chk li.n{color:var(--bad)}
+details.adv{margin:10px 0;border:1px solid var(--line);border-radius:8px;padding:8px 12px}details.adv summary{cursor:pointer;font-weight:600;letter-spacing:.04em;font-size:12px}
+.sbar div.bad b{color:var(--bad)}
+.sbar div{background:var(--surface);padding:6px 10px;display:flex;flex-direction:column;gap:1px}
+.sbar span{font-size:10px;letter-spacing:.09em;color:var(--muted);font-weight:600}
+.sbar b{font-size:12px;font-family:var(--f-mono);font-weight:500;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbar .ok b{color:var(--good)}
+.cprof{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px}
+.cprof input,.cprof select,.cprof textarea{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%;min-width:0}
+.cprof .wide{grid-column:1/-1}
+.flowbar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-family:var(--f-display);font-size:14px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.flowbar b{color:var(--ink)} .flowbar i{font-style:normal;color:var(--line)}
+.best{border:2px solid var(--warn);border-radius:8px;padding:12px 14px;background:var(--surface);display:flex;flex-direction:column;gap:6px}
+.best h3{margin:0;font-family:var(--f-display);font-size:20px;text-transform:uppercase;letter-spacing:.04em}
+.best ul{margin:0;padding-left:18px;font-size:13px}
+.cls{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.07em;border-radius:3px;padding:2px 6px;white-space:nowrap}
+.cls.ELITE{background:var(--good);color:var(--surface)} .cls.STRONG{background:var(--good-soft);color:var(--good)} .cls.PLAYABLE{background:var(--sunk);color:var(--ink)} .cls.WEAK{background:var(--bb-soft);color:var(--bb)} .cls.REBUILD{background:var(--bad-soft);color:var(--bad)}
+tr.sel td{background:var(--accent-soft)}
+.ctbl td,.ctbl th{padding:6px 8px}
+.sugg{display:flex;flex-direction:column;gap:6px}
+.sugg div{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:13px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.card footer{display:flex;justify-content:space-between;gap:8px;padding:6px 12px 10px;font-size:12px;color:var(--muted);font-family:var(--f-mono);border-top:1px dashed var(--line)}
+
+.tblwrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:7px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600;background:var(--sunk)}
+th.sort{cursor:pointer;user-select:none}
+th.sort:hover{color:var(--ink)}
+th.on{color:var(--accent)}
+td.r,th.r{text-align:right}
+td.num{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+tr.ex td{opacity:.45}
+td .sub{color:var(--muted);font-size:12px;margin-left:6px}
+td.wrap{white-space:normal;min-width:220px}
+.qpbox.drag{outline:2px dashed var(--accent,#4c8bf5);outline-offset:2px}
+.ed{width:68px;background:var(--sunk);border:1px solid var(--line);border-radius:4px;padding:3px 6px;text-align:right;font-family:var(--f-mono)}
+.chip{border:1px solid var(--line);background:none;border-radius:999px;font-size:11px;padding:2px 8px;cursor:pointer;min-width:58px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.chip.lock{background:var(--good);border-color:var(--good);color:var(--surface)}
+.chip.excl{background:var(--bad);border-color:var(--bad);color:var(--surface)}
+.search{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 10px;width:200px;max-width:100%}
+.pill{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;border-radius:999px;padding:2px 9px}
+.pill.ok{background:var(--good-soft);color:var(--good)}
+.pill.off{background:var(--bad-soft);color:var(--bad)}
+.pill.na{background:var(--sunk);color:var(--muted)}
+.lev{display:flex;align-items:center;gap:8px}
+.lev .track{position:relative;width:120px;height:8px;background:var(--sunk);border-radius:2px}
+.lev .track::before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:var(--muted)}
+.lev .track i{position:absolute;top:0;bottom:0;border-radius:2px}
+.pos-good{color:var(--good)} .pos-bad{color:var(--bad)}
+
+.box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:12px;max-width:860px}
+.box h2{font-family:var(--f-display);font-size:22px;text-transform:uppercase;margin:0;letter-spacing:.03em}
+.box p,.box li{max-width:70ch;color:var(--muted);margin:0}
+.box ol{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.box code{font-family:var(--f-mono);font-size:12px;background:var(--sunk);padding:1px 5px;border-radius:3px;color:var(--ink)}
+textarea{width:100%;min-height:150px;background:var(--sunk);border:1px solid var(--line);border-radius:6px;padding:10px;font-family:var(--f-mono);font-size:12px;resize:vertical}
+.empty{padding:28px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:8px}
+
+/* Showdown / single-game format */
+body.sdmode .panel>*:not(.keep),body.sdmode #classicTabs,body.sdmode .slate,body.sdmode #status,body.sdmode section[id^="tab-"]{display:none!important}
+body:not(.sdmode) #sdTabs,body:not(.sdmode) #sdMain,body:not(.sdmode) #sdStatus,body:not(.sdmode) .sdaside{display:none!important}
+.sdaside{display:flex;flex-direction:column;gap:11px}
+#sdMain{display:block}#sdMain .tblwrap{overflow-x:auto}
+.chip{border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:2px 9px;font-size:11px;cursor:pointer;color:var(--muted)}
+.fld select{background:var(--sunk);border:1px solid var(--line);border-radius:5px;padding:6px 8px;width:100%;min-width:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+.stalebar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:8px 0;padding:10px 12px;border-radius:10px;background:var(--bad-soft);border:1px solid var(--warn);font-size:13px}
+.stalebar .btn{min-height:36px}
+.cnt{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0;font-size:13px}.cnt span{white-space:nowrap}.cnt b{font-variant-numeric:tabular-nums}
+.tip{display:inline-flex;align-items:center;justify-content:center;width:16px;height:16px;border-radius:50%;border:1px solid currentColor;font-size:11px;cursor:help;opacity:.7;margin-left:4px}
+.bsum{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:8px}.bsum h4{margin:0 0 4px;font-size:13px}.bsum ul{margin:0;padding-left:18px}
+table.aud td,table.aud th{white-space:nowrap}table.aud td.wrap{white-space:normal;min-width:120px}
+.hmgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.hmt td,.hmt th{padding:3px 6px;font-size:12px}.hmt td.hm{min-width:44px}
+.gloss dt{font-weight:600;margin-top:6px}.gloss dd{margin:0 0 0 0}
+.grade{display:inline-block;min-width:26px;text-align:center;border-radius:6px;padding:1px 5px;font-size:12px}.gAp{background:#14532d;color:#fff}.gA{background:#16a34a;color:#fff}.gB{background:#ca8a04;color:#fff}.gC{background:#ea580c;color:#fff}.gD{background:#b91c1c;color:#fff}
+.dq summary{display:flex;flex-wrap:wrap;gap:4px;align-items:center}.dqc{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600}.dqc.g{background:#16a34a;color:#fff}.dqc.y{background:#ca8a04;color:#fff}.dqc.r{background:#b91c1c;color:#fff}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <h1>NFL DFS <span>Simulator</span></h1>
+      <p id="meta">FanDuel main slate · $60,000 cap · QB / 2 RB / 3 WR / TE / FLEX / DEF · built on the Cracking the DFS Code blueprint</p>
+    </div>
+    <div class="toolbar"><div class="grp"><span class="pill na" id="vegasChip" title="Vegas data status">VEGAS …</span><button class="btn" id="vegasBtn" type="button" title="Reload totals and spreads now">Refresh Vegas</button><button class="btn" id="cancelBtn" type="button" hidden>Cancel</button><button class="btn btn-refresh" id="refreshBtn" type="button" title="Rebuild a new set of lineups with the same settings and projections"><span aria-hidden="true">↻</span> Refresh lineups</button><button class="btn-primary btn" id="runBtn" type="button">Build lineups</button></div></div>
+  </header>
+
+  <div class="slate" id="slate" aria-label="Games on this slate"></div>
+
+  <div class="main">
+    <aside class="panel" aria-label="Build settings">
+      <h2 class="keep">Game plan</h2>
+      <div class="fld keep"><span class="lbl" id="fmtLbl">Format</span>
+        <div class="seg site" id="fmtSeg" role="group" aria-labelledby="fmtLbl"><button type="button" data-fmt="classic" aria-pressed="true">Classic</button><button type="button" data-fmt="sd" aria-pressed="false">Showdown</button></div>
+        <small>Classic and Showdown are two different games with separate rules, simulators and exports.</small></div>
+      <div class="fld keep"><span class="lbl" id="siteLbl">Site</span>
+        <div class="seg site" role="group" aria-labelledby="siteLbl"><button type="button" data-site="fd" aria-pressed="true">FanDuel</button><button type="button" data-site="dk" aria-pressed="false">DraftKings</button></div>
+        <small id="siteNote">$60,000 cap · QB, 2 RB, 3 WR, TE, FLEX, DEF · max 4 per team</small></div>
+      <div class="fld"><span class="lbl">Presets</span><div class="row" style="gap:6px;flex-wrap:wrap"><button class="btn" type="button" data-preset="gpp" title="Large-field tournament settings: stacks, bring-backs, ownership targets, diversified exposures">Tournament defaults</button><button class="btn" type="button" data-preset="cash" title="Cash games (50/50, double-up): highest projected points, few correlation preferences, no ownership targets">Conservative / cash</button>
+          <select id="presetSel" aria-label="Contest strategy preset"><option value="">Contest strategy…</option><option value="se">Single entry</option><option value="max3">3-max</option><option value="max20">20-max</option><option value="max150">150-max</option><option value="small">Small field</option><option value="medium">Medium field</option><option value="large">Large field</option><option value="cash">Cash</option><option value="sd">Showdown</option></select></div>
+        <small id="presetNote">Presets only fill in settings; every field stays editable. The QB + same-team WR/TE rule stays on in both.</small></div>
+      <div class="fld"><label for="slateDate">Slate date (ET)</label><input type="date" id="slateDate" class="dateIn"></div>
+      <div class="fld"><label for="slateType"><span class="siteName">FanDuel</span> slate</label>
+        <select id="slateType">
+          <option value="early">Early · 1 PM ET games</option>
+          <option value="main" selected>Main · All Sunday daytime games</option>
+          <option value="afternoon">Afternoon · 4 PM ET games</option>
+          <option value="all">All games in the file</option>
+        </select>
+        <small id="slateInfo"></small>
+        <small class="note">Switching slates clears results and removes out-of-slate players and locks. Upload the salary file for that exact DraftKings or FanDuel contest, since salaries and IDs differ between slates.</small></div>
+      <div class="fld"><label for="contest">Contest size</label>
+        <select id="contest">
+          <option value="massive">Milly Maker / Sunday Million class (100K+)</option>
+          <option value="large" selected>Large GPP (10K–100K)</option>
+          <option value="mid">Mid GPP (1K–10K)</option>
+          <option value="small">Small league (under 1K)</option>
+        </select>
+        <small id="contestNote">Sets the ownership target, low-owned floor and randomness (Ch. 3).</small></div>
+      <div class="row2">
+        <div class="fld"><label for="nLineups">Lineups</label><input id="nLineups" type="number" min="1" max="150" value="20"></div>
+        <div class="fld"><label for="nSims">Build simulations</label>
+          <select id="nSims"><option value="1000">1,000</option><option value="3000" selected>3,000</option><option value="5000">5,000</option><option value="10000">10,000</option><option value="25000">25,000</option></select></div>
+      </div>
+      <div class="fld"><label for="simMode">Game simulation model</label><select id="simMode"><option value="event" selected>Event simulation: drives and plays for every team (default)</option><option value="auto">Legacy: component-stat model where available, correlated draws elsewhere</option><option value="reduced">Reduced-detail (fantasy points only) for everyone</option></select>
+        <small>Detailed: shared passing/rushing events per team (a passing TD credits the QB and one receiver), site scoring with bonuses, then scaled to your projection. Reduced-detail: correlated fantasy-point draws by role; not event-consistent.</small></div>
+
+      <h3>Salary</h3>
+      <div class="row2">
+        <div class="fld"><label for="minSal">Min. salary used</label><input id="minSal" type="number" min="50000" max="60000" step="100" value="59500"></div>
+        <div class="fld"><label for="rbFloor">RB salary floor</label><input id="rbFloor" type="number" min="4000" max="7000" step="100" value="5000"></div>
+      </div>
+      <div class="fld"><label>FLEX may use (<span class="siteName">FanDuel</span> setting, saved per site)</label><div class="row" id="flexBox"><label class="check"><input type="checkbox" data-flex="RB" checked> RB</label><label class="check"><input type="checkbox" data-flex="WR" checked> WR</label><label class="check"><input type="checkbox" data-flex="TE" checked> TE</label></div></div>
+      <small class="note" id="capNote">Every lineup spends at least the minimum and never passes $60,000. RB floor is the no-punt rule (Ch. 9), translated to FanDuel prices.</small>
+
+      <h3>Ownership law</h3>
+      <div class="row2">
+        <div class="fld"><label for="ownLo">Own. target min %</label><input id="ownLo" type="number" min="0" max="400" value="120"></div>
+        <div class="fld"><label for="ownHi">Own. hard max %</label><input id="ownHi" type="number" min="0" max="400" value="140"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="min10">Sub-10% RB/WR/TE</label><input id="min10" type="number" min="0" max="7" value="2"></div>
+        <div class="fld"><label for="maxPunt">Max sub-5% WRs</label><input id="maxPunt" type="number" min="0" max="4" value="1"></div>
+      </div>
+      <small class="note">Total ownership never goes over the max. The min is a target the builder leans toward, since 40% of large-field top-100 lineups still finished under 120% (Ch. 3).</small>
+
+      <h3>Stacks</h3>
+      <div class="fld"><label for="twoShare">QB + 2 pass catchers <output id="twoShareO">38%</output></label><input id="twoShare" type="range" min="0" max="100" step="1" value="38"></div>
+      <div class="fld"><label for="nakedShare">Naked QB <output id="nakedShareO">0%</output></label><input id="nakedShare" type="range" min="0" max="0" step="1" value="0" disabled>
+        <small>Every QB must have at least one WR or TE from his team, so naked QBs are never built. The rest are QB + 1 or QB + 2; QB + 3 is never built (Ch. 4).</small></div>
+      <div class="fld"><label for="bbShare">Bring-back share <output id="bbShareO">50%</output></label><input id="bbShare" type="range" min="0" max="100" step="5" value="50">
+        <small>A coin flip, never a rule for every build (Ch. 5).</small></div>
+      <div class="fld"><label for="secShare">Second cluster share <output id="secShareO">85%</output></label><input id="secShare" type="range" min="0" max="100" step="5" value="85"></div>
+      <div class="fld"><label for="dteShare">Double-TE allowed in <output id="dteShareO">25%</output></label><input id="dteShare" type="range" min="0" max="100" step="5" value="25">
+        <small>Share of builds that may put a second TE at FLEX. Book: 19% overall, 26% in 2025 (Ch. 2).</small></div>
+      <div class="fld"><label for="secShape">Second cluster shape</label>
+        <select id="secShape"><option value="rbopp" selected>RB + opposing WR/TE, other game</option><option value="any">Any 2 players from another game</option></select></div>
+      <div class="row2">
+        <div class="fld"><label for="minGames">Min games</label><input id="minGames" type="number" min="3" max="9" value="4"></div>
+        <div class="fld"><label for="maxGames">Max games</label><input id="maxGames" type="number" min="3" max="9" value="7"></div>
+      </div>
+
+      <h3>Book tilts</h3>
+      <div class="fld"><label for="tilt">Tilt strength <output id="tiltO">60%</output></label><input id="tilt" type="range" min="0" max="100" step="5" value="60">
+        <small>Boosts and reduces each player by the book's leverage numbers (Chs. 7–11). 0% turns them off.</small></div>
+      <div class="fld"><label for="envLean" title="Tilts lineup building toward games with better environment grades (Vegas total, simulated ceiling and shootout odds, stack quality, leverage, line movement, weather). 0 = off.">Game environment lean <output id="envLeanO">25%</output></label><input id="envLean" type="range" min="0" max="100" step="5" value="25"></div>
+      <label class="check"><input type="checkbox" id="blockRoadRB" checked> Remove road RBs behind 10+ point spreads</label>
+      <label class="check"><input type="checkbox" id="noOppDst" checked> Never roster offense against your <span class="defLbl">DEF</span></label>
+
+      <h3>News &amp; weather adjustments <span class="tip" tabindex="0" title="Optional. Nothing changes unless you set a value; every adjusted player shows the reason on the Player pool and Game sim tabs.">?</span></h3>
+      <div class="row3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+        <div class="fld"><label for="aQProj">Questionable: proj −%</label><input id="aQProj" type="number" min="0" max="100" value="0"></div>
+        <div class="fld"><label for="aQOwn">own −%</label><input id="aQOwn" type="number" min="0" max="100" value="0"></div>
+        <div class="fld"><label for="aQCeil">ceiling −%</label><input id="aQCeil" type="number" min="0" max="90" value="0"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="aDOut"> Treat Doubtful players as Out</label>
+      <label class="check"><input type="checkbox" id="aRole" checked> When a starter is out, move part of his projection and ownership to same-position teammates (RB 60%, WR 45%, TE 50%, QB 70%; labeled MODEL ESTIMATE)</label>
+      <label class="check"><input type="checkbox" id="aWind"> Apply a wind adjustment (outdoor games with wind entered on Vegas lines)</label>
+      <div class="row3" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">
+        <div class="fld"><label for="aWindMph">Wind ≥ mph</label><input id="aWindMph" type="number" min="0" max="60" value="15"></div>
+        <div class="fld"><label for="aWindPass">QB/WR/TE −%</label><input id="aWindPass" type="number" min="0" max="50" value="8"></div>
+        <div class="fld"><label for="aWindDst"><span class="defLbl">DEF</span> +%</label><input id="aWindDst" type="number" min="0" max="50" value="5"></div>
+      </div>
+
+      <h3>Game filters</h3>
+      <div class="row2">
+        <div class="fld"><label for="fTotMin">Game total min</label><input id="fTotMin" type="number" step="0.5" min="20" max="80" placeholder="Any"></div>
+        <div class="fld"><label for="fTotMax">Game total max</label><input id="fTotMax" type="number" step="0.5" min="20" max="80" placeholder="Any"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="fImpMin">Team implied min</label><input id="fImpMin" type="number" step="0.5" min="0" max="50" placeholder="Any"></div>
+        <div class="fld"><label for="fImpMax">Team implied max</label><input id="fImpMax" type="number" step="0.5" min="0" max="50" placeholder="Any"></div>
+      </div>
+      <div class="fld"><label for="fSprMax">Largest spread allowed (points)</label><input id="fSprMax" type="number" step="0.5" min="0" max="30" placeholder="Any"></div>
+      <div class="fld"><label for="fMissPol">If a filtered game has missing odds</label><select id="fMissPol"><option value="block" selected>Block the build until odds are entered</option><option value="exclude">Exclude games with missing odds</option><option value="include">Include games with missing odds</option></select></div>
+      <small class="note" id="filterNote">Leave blank for no filter. Players outside these ranges are left out of lineup builds and the simulations that score them. Team implied applies to offensive players; defenses follow game total and spread. Games with missing lines are never filtered out.</small>
+
+      <h3>Portfolio</h3>
+      <div class="row5">
+        <div class="fld"><label for="expQB">QB %</label><input id="expQB" type="number" min="5" max="100" value="30"></div>
+        <div class="fld"><label for="expRB">RB %</label><input id="expRB" type="number" min="5" max="100" value="35"></div>
+        <div class="fld"><label for="expWR">WR %</label><input id="expWR" type="number" min="5" max="100" value="30"></div>
+        <div class="fld"><label for="expTE">TE %</label><input id="expTE" type="number" min="5" max="100" value="25"></div>
+        <div class="fld"><label for="expDST"><span class="defLbl">DEF</span> %</label><input id="expDST" type="number" min="5" max="100" value="25"></div>
+      </div>
+      <small class="note">Max exposure per player by position (Ch. 13). Chalk anchors owned 20%+ may run up to 1.5× their ownership.</small>
+      <div class="row2">
+        <div class="fld"><label for="minUnique">Min. unique players</label><input id="minUnique" type="number" min="1" max="6" value="3"></div>
+        <div class="fld"><label for="randomness">Randomness <output id="randomnessO">20%</output></label><input id="randomness" type="range" min="0" max="60" step="1" value="20"></div>
+        <div class="fld"><label for="seed">Seed (blank = new random seed each build)</label><input type="number" id="seed" placeholder="random"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="expStack">Max lineups stacking one team (%)</label><input id="expStack" type="number" min="1" max="100" placeholder="No limit"></div>
+      </div>
+      <label class="check"><input type="checkbox" id="allowRelax"> Allow raising position caps and lowering unique players to fill every entry</label>
+      <small class="note" id="expBasisNote">Every exposure % here is measured across all lineups in the set: one player counts once per lineup, whatever slot (FLEX included). Max rounds down and min rounds up: 20 lineups at 30% max allows 6; at 15% min requires 3. Set per-player min/max on the Player pool tab; those are never relaxed. With the box unticked, caps and uniqueness are never relaxed: you get fewer lineups and the reason. Tournament preferences (second cluster, bring-back, ownership targets, games range) may be loosened to fill entries, and the build says so.</small>
+
+      <h3>Correlation &amp; portfolio rules <span class="tip" tabindex="0" title="Hard rules: every lineup must follow them, they are never relaxed, and the audit shows them. Blank = no rule.">?</span></h3>
+      <div class="row2">
+        <div class="fld"><label for="rQbMin" title="How many of the QB's own pass catchers every lineup must include">QB pass catchers (min)</label><select id="rQbMin"><option value="1" selected>1</option><option value="2">2</option><option value="3">3</option></select></div>
+        <div class="fld"><label for="rStackPos" title="Which positions count as the QB's stack partners">Stack partners</label><select id="rStackPos"><option value="any" selected>WR or TE</option><option value="WR">WR only</option><option value="TE">TE only</option></select></div>
+      </div>
+      <label class="check"><input type="checkbox" id="rBbMin"> Every lineup needs at least one bring-back <span class="tip" tabindex="0" title="A bring-back is a player from the team your QB is playing against, so you benefit if that game turns into a shootout.">?</span></label>
+      <label class="check"><input type="checkbox" id="rBbMax"> At most one bring-back</label>
+      <label class="check"><input type="checkbox" id="rBbWRTE"> Bring-back must be a WR or TE (the opposing QB's pass catcher)</label>
+      <label class="check"><input type="checkbox" id="rNoOppRb"> No opposing RB against your <span class="defLbl">DEF</span></label>
+      <div class="row2">
+        <div class="fld"><label for="rRbDst" title="RB + his own team's defense is allowed only when that team is favored by at least this many points. Blank = always allowed.">RB + own <span class="defLbl">DEF</span> only if favored by</label><input id="rRbDst" type="number" step="0.5" min="0" max="20" placeholder="Always ok"></div>
+        <div class="fld"><label for="rVsDst" title="Most offensive players allowed against your defense. The 'Never roster offense against your DEF' box above sets this to 0.">Max offense vs your <span class="defLbl">DEF</span></label><input id="rVsDst" type="number" min="0" max="8" placeholder="No limit"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="rMaxGame">Max players from one game</label><input id="rMaxGame" type="number" min="2" max="9" placeholder="No limit"></div>
+        <div class="fld"><label for="rMaxTeam">Max players from one team</label><input id="rMaxTeam" type="number" min="2" max="8" placeholder="Site limit"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="rTeamExp" title="Share of lineups that have 2+ offensive players from any one team">Team exposure cap (%)</label><input id="rTeamExp" type="number" min="1" max="100" placeholder="No limit"></div>
+        <div class="fld"><label for="rGameExp" title="Share of lineups with 3+ players from any one game (a game stack)">Game exposure cap (%)</label><input id="rGameExp" type="number" min="1" max="100" placeholder="No limit"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="rSameStack" title="Most lineups that may use the identical QB + pass-catcher combination">Max lineups per identical QB stack</label><input id="rSameStack" type="number" min="1" max="150" placeholder="No limit"></div>
+        <div class="fld"><label for="rSameGame" title="Most lineups whose main game (the game with the most of your players) is the same">Max lineups per primary game</label><input id="rSameGame" type="number" min="1" max="150" placeholder="No limit"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="rSameBb" title="Spreads bring-backs across different opponents">Max lineups per bring-back player</label><input id="rSameBb" type="number" min="1" max="150" placeholder="No limit"></div>
+        <div class="fld"><label for="rQbOverlap" title="Lineups with the same QB may share at most this many players">Max shared players (same QB)</label><input id="rQbOverlap" type="number" min="1" max="8" placeholder="No limit"></div>
+      </div>
+      <div class="row2">
+        <div class="fld"><label for="rChalkOwn" title="Players owned at least this much count as chalk anchors">Chalk anchor at own % ≥</label><input id="rChalkOwn" type="number" min="1" max="100" value="20"></div>
+        <div class="fld"><label for="rChalkMult" title="Chalk anchors may run up to this multiple of their ownership (capped at 80%) instead of the position cap. 1 = off.">Chalk anchor max × ownership</label><input id="rChalkMult" type="number" min="1" max="4" step="0.1" value="1.5"></div>
+      </div>
+      <small class="note">Max shared players between any two lineups = 9 − Min. unique players. These rules are checked again before export.</small>
+
+      <details class="adv"><summary class="note"><b>DFS terms in plain language</b></summary><dl class="gloss note">
+        <dt>Stack</dt><dd>Your QB plus his own pass catchers, so a big passing day counts twice.</dd>
+        <dt>Bring-back</dt><dd>A player from the team your QB plays against: if the game turns into a shootout, both sides score.</dd>
+        <dt>Ceiling (p90)</dt><dd>A score the player beats only 1 time in 10. Tournaments are won by ceilings, not averages.</dd>
+        <dt>Boom / bust</dt><dd>Boom = a big game for the price (site multiple × salary). Bust = under half of that.</dd>
+        <dt>Ownership / chalk</dt><dd>Share of opponents expected to play someone. Chalk = very popular players.</dd>
+        <dt>Leverage</dt><dd>Gaining an edge when a player you have and most rivals don't plays well, or vice versa.</dd>
+        <dt>Duplication</dt><dd>Other entries with your exact lineup; a win is split with them.</dd>
+        <dt>Top 1% / win %</dt><dd>How often a lineup finishes in the top 1% or first across the simulated contests: model estimates.</dd>
+        <dt>Expected profit / ROI</dt><dd>Average payout minus the fee across simulations. Only shown with a known fee; estimated when payouts are modeled.</dd>
+        <dt>FLEX</dt><dd>The extra slot that can hold an RB, WR or TE.</dd>
+        <dt>Late swap</dt><dd>Changing players whose games haven't started yet after earlier games kick off.</dd>
+        <dt>Game sim vs contest sim</dt><dd>Game sim = how players score. Contest sim = how your lineups finish against a modeled field.</dd></dl></details>
+
+      <div class="sdaside keep">
+        <h3>Showdown build</h3>
+        <div class="fld"><label>Seed (blank = random each build)</label><input type="number" placeholder="random" data-cfg="cfg.seed"></div>
+        <label class="check"><input type="checkbox" data-cfg="cfg.histOk"> Use the site's historical average (FPPG) for players without a projection (labeled HISTORICAL AVERAGE)</label>
+        <div class="fld"><label>Lineups to build (when no entries file)</label><input type="number" min="1" max="150" value="20" data-cfg="cfg.nLineups"></div>
+        <div class="row2"><div class="fld"><label>Game sims</label><select data-cfg="cfg.sims"><option value="1000">1,000</option><option value="5000">5,000</option><option value="10000">10,000</option><option value="25000">25,000</option><option value="50000" selected>50,000</option><option value="100000">100,000</option></select></div>
+        <div class="fld"><label>Candidates</label><select data-cfg="cfg.cands"><option value="300">300</option><option value="500" selected>500</option><option value="750">750</option><option value="1000">1,000</option><option value="1500">1,500</option></select></div></div>
+        <div class="row2"><div class="fld"><label>Nuts search games</label><select data-cfg="cfg.nutsN"><option value="2000">2,000</option><option value="5000">5,000</option><option value="10000" selected>10,000</option><option value="25000">25,000</option><option value="50000">50,000</option></select></div>
+        <div class="fld"><label>Game model</label><select data-cfg="cfg.simModel"><option value="event" selected>Event simulation (drives and plays)</option><option value="legacy">Legacy script model</option></select></div><div class="fld"><label>Contest sims</label><select data-cfg="cfg.csimN"><option value="2000">2,000</option><option value="5000">5,000</option><option value="10000" selected>10,000</option></select></div><div class="fld"><label title="Each scenario draws the opponent field from a different plausible ownership outcome (MODEL ESTIMATE spreads)">Ownership scenarios</label><select data-cfg="cfg.ownScen"><option value="1">1 (exact)</option><option value="2">2</option><option value="4" selected>4</option><option value="8">8</option></select></div></div>
+        <div class="fld"><label>Opponent field sample</label><select data-cfg="cfg.fieldM"><option value="2000">2,000</option><option value="3000" selected>3,000</option><option value="5000">5,000</option></select></div>
+        <small class="note">Games, nuts and contest sims are capped by the game sim count. The nuts search is the slowest step.</small>
+        <h3>Captain pool (Codex)</h3>
+        <div class="row2"><div class="fld"><label>Codex lean strength %</label><input type="number" min="0" max="200" value="100" data-cfg="cfg.lean"></div>
+        <div class="fld"><label>Captain proj floor %</label><input type="number" min="0" max="100" value="55" data-cfg="cfg.cptFloor"></div></div>
+        <small class="note">Floor is % of the top FLEX projection. The Codex floor number is not in my notes, so it is editable.</small>
+        <label class="check"><input type="checkbox" data-cfg="cfg.kdstCpt"> Allow K / DST as Captain (default off)</label>
+        <label class="check"><input type="checkbox" data-cfg="cfg.dstOk" checked> Allow DST at FLEX</label>
+        <label class="check"><input type="checkbox" data-cfg="cfg.ghost"> Allow ghost punts</label>
+        <h3>Construction</h3>
+        <div class="row2"><div class="fld"><label>Randomness %</label><input type="number" min="0" max="60" value="25" data-cfg="cfg.rnd"></div>
+        <div class="fld"><label>Max salary left %</label><input type="number" min="0" max="40" value="10" data-cfg="cfg.maxLeft"></div></div>
+        <div class="row2"><div class="fld"><label>Min different players</label><input type="number" min="1" max="5" value="2" data-cfg="cfg.minUnique"></div>
+        <div class="fld"><label>Max Captain exposure %</label><input type="number" min="5" max="100" value="40" data-cfg="cfg.cptMaxPct"></div></div>
+        <div class="fld"><label>Max player exposure %</label><input type="number" min="5" max="100" value="70" data-cfg="cfg.expMaxPct"></div>
+        <small class="note">Salary is not forced to the cap. Leaving salary is a duplication decision; the contest sim prices it.</small>
+      </div>
+    </aside>
+
+    <div class="content">
+      <details class="box qpbox" id="qpBox" open style="max-width:none;margin-bottom:12px"><summary><b>Paste or drop data</b> <span class="note">salaries, entries, projections, ownership, odds, payouts, contest standings, or your projections-proxy JSON</span></summary>
+        <textarea id="qpText" placeholder="Paste a CSV or JSON here (or drop a file on this box). It is detected automatically: DraftKings / FanDuel salary or entries files, Showdown files, projections, ownership, odds, payout tables, contest standings, or the JSON your projections proxy returns." style="min-height:90px"></textarea>
+        <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="qpGo" type="button">Load pasted data</button><input type="file" id="qpFile" accept=".csv,.json,.txt,text/csv,application/json,text/plain" aria-label="Choose a file to load"><button class="btn" id="qpClear" type="button">Clear</button></div></div>
+        <p class="note" id="qpMsg"></p></details>
+      <div class="tabs" id="classicTabs" role="tablist">
+        <button class="tab" role="tab" data-tab="lineups" aria-selected="true">Lineups</button>
+        <button class="tab" role="tab" data-tab="contest" aria-selected="false">Contest sim</button>
+        <button class="tab" role="tab" data-tab="audit" aria-selected="false">Blueprint check</button>
+        <button class="tab" role="tab" data-tab="pool" aria-selected="false">Player pool</button>
+        <button class="tab" role="tab" data-tab="games" aria-selected="false">Vegas lines</button>
+        <button class="tab" role="tab" data-tab="exposure" aria-selected="false">Exposure</button>
+        <button class="tab" role="tab" data-tab="sims" aria-selected="false">Game sim</button>
+        <button class="tab" role="tab" data-tab="import" aria-selected="false">Import slate</button>
+      </div>
+      <div class="tabs" id="sdTabs" role="tablist"></div>
+      <div id="sdStatus"></div>
+      <section id="sdMain"></section>
+      <div class="status" id="status" aria-live="polite"><span id="statusText">Loading sample slate…</span><div class="bar"><i id="barFill"></i></div></div>
+      <div class="stalebar" id="staleBar" hidden></div>
+      <div id="dqBox"></div>
+      <section id="tab-lineups"></section>
+      <section id="tab-contest" hidden></section>
+      <section id="tab-audit" hidden></section>
+      <section id="tab-pool" hidden></section>
+      <section id="tab-games" hidden></section>
+      <section id="tab-exposure" hidden></section>
+      <section id="tab-sims" hidden></section>
+      <section id="tab-import" hidden>
+        <div class="box" style="margin-bottom:14px" id="btBox">
+          <h2>Backtest &amp; calibration</h2>
+          <p class="note">After a slate finishes, upload the actual results (player, team, position, fantasy points; optional actual ownership) for the slate you built. The page measures this build against what happened and adds it to a running history, so calibration is judged over many slates, not one. Results are kept in this browser.</p>
+          <input type="file" id="btFile" accept=".csv,text/csv" aria-label="Actual results CSV">
+          <p class="note" id="btMsg"></p><div id="btOut"></div>
+        </div>
+        <div class="box" style="margin-bottom:14px" id="histBox"><h2>Build history &amp; reproducibility</h2><div id="histOut"><p class="note">Each successful build is recorded with its settings, seed, sources, odds snapshot and model version.</p></div></div>
+        <div class="box" style="margin-bottom:14px" id="sessBox">
+          <h2>Saved sessions</h2>
+          <p class="note" id="sessNote">Your work saves automatically in this browser (uploaded files, column mapping, projection and odds edits, locks, exclusions, exposures, rules, contest profile, built lineups, selected entries and simulation settings), separately for each site, date, slate and format. Simulation outputs are re-run on restore rather than stored.</p>
+          <div class="toolbar"><div class="grp"><select id="sessList" aria-label="Saved sessions"></select><button class="btn" id="sessLoad" type="button">Load</button><button class="btn btn-primary" id="sessSave" type="button">Save now</button></div>
+            <div class="grp"><button class="btn" id="sessExport" type="button">Export session JSON</button><label class="btn" style="cursor:pointer">Import session JSON<input type="file" id="sessImport" accept=".json,application/json" hidden></label></div></div>
+          <div class="toolbar"><div class="grp"><button class="btn" id="rsOdds" type="button">Reset odds overrides</button><button class="btn" id="rsEdits" type="button">Reset player edits</button><button class="btn" id="rsLineups" type="button">Reset lineups</button><button class="btn" id="rsSims" type="button">Reset simulations</button><button class="btn" id="rsSettings" type="button">Reset all settings</button><button class="btn" id="sessClear" type="button">Clear saved sessions</button></div></div>
+          <p class="note" id="sessMsg"></p>
+          <textarea id="sessOut" hidden readonly aria-label="Session JSON"></textarea>
+        </div>
+        <div class="box" style="margin-bottom:14px">
+          <h2>Upload any CSV</h2>
+          <p>Drop in a DraftKings or FanDuel player pool, a projections, ownership or simulation file, or a contest entry template. The file type is detected automatically and columns are mapped by what they mean and what's in them, so you never need to rename headers.</p>
+          <div class="fld" style="max-width:360px"><label for="smartType">File type</label><select id="smartType"><option value="auto" selected>Detect automatically</option><option value="pool">Official salary / player file</option><option value="proj">Projections / ownership / injuries / stats</option><option value="entries">Contest entries / template</option><option value="payout">Payout table</option><option value="odds">Vegas odds (teams, total, spread)</option><option value="weather">Weather (teams, temp, wind, precip, roof)</option><option value="own">Ownership (adds a source)</option><option value="sd">Showdown / single-game player file</option></select><small>Detection shows its reasoning; pick a type to override it.</small></div>
+          <input type="file" id="smartFile" accept=".csv,text/csv" aria-label="Any DFS CSV">
+          <textarea id="smartText" placeholder="Or paste the CSV here"></textarea>
+          <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="smartGo" type="button">Read pasted data</button></div></div>
+          <p class="note" id="smartMsg"></p>
+        </div>
+        <div class="box">
+          <h2>Load your <span class="siteName">FanDuel</span> slate</h2>
+          <ol>
+            <li><b>FanDuel:</b> open a main-slate NFL contest, go to the player list and choose <code>Download players list</code>. <b>DraftKings:</b> open a Classic NFL contest and choose <code>Export to CSV</code> under the salaries. The site is detected from the file and the builder switches to it.</li>
+            <li>Optional: add <code>Proj</code> and <code>Own</code> columns, or upload a separate projections file below. Without them, the site's average points are used and ownership is estimated from value.</li>
+            <li>Load the file, then paste or enter each game's total and spread on the Vegas lines tab. Players listed as out (O) or on IR are removed automatically.</li>
+          </ol>
+          <input type="file" id="csvFile" accept=".csv,text/csv" aria-label="Salary file">
+          <textarea id="csvText" placeholder="FanDuel: Id,Position,First Name,Nickname,Last Name,FPPG,Played,Salary,Game,Team,Opponent,…&#10;DraftKings: Position,Name + ID,Name,ID,Roster Position,Salary,Game Info,TeamAbbrev,AvgPointsPerGame"></textarea>
+          <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="loadCsv" type="button">Load slate</button><button class="btn" id="loadSample" type="button">Restore sample slate</button></div></div>
+          <p class="note" id="impMsg"></p>
+        </div>
+        <div class="box" style="margin-top:14px">
+          <h2>Projections, ownership &amp; other player data</h2>
+          <p>Files from any provider work. Each player is matched to the official player pool, and its official ID is attached for export. Your file doesn't need IDs. Matching uses the site ID when present, then name, team, position, opponent and salary. Only <b>exact</b> and <b>high-confidence</b> matches are used; anything uncertain goes to Review mapping and is never guessed.</p>
+          <input type="file" id="projFile" accept=".csv,text/csv" aria-label="Projections file">
+          <textarea id="projText" placeholder="Paste your projections CSV here, or choose a file above.&#10;Player,ID,Team,Pos,Salary,FPTS,Own%"></textarea>
+          <div id="projMap" class="mapbox" hidden>
+            <h3 class="maph">Match your columns</h3>
+            <p class="note">Columns are matched by header meaning (case, spaces and punctuation ignored) and, when a header is unfamiliar, by the values in the column. Fields marked <span class="badge">from data</span> were found from the values. Change any that are wrong.</p>
+            <div class="mapgrid" id="mapGrid"></div>
+            <p class="note" id="mapSummary"></p>
+            <div class="tblwrap"><table id="mapPreview"></table></div>
+          </div>
+          <div id="mapReport" hidden></div>
+          <div id="reviewBox" class="mapbox" hidden></div>
+          <label class="check"><input type="checkbox" id="projStrict" checked> Leave out players who aren't in my projections</label>
+          <label class="check"><input type="checkbox" id="useHist"> Use the site's historical average (FPPG / AvgPointsPerGame) for players with no projection. Off by default; those players are labeled HISTORICAL AVERAGE.</label>
+          <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="applyProj" type="button">Use my data</button><button class="btn" id="clearProj" type="button">Go back to site projections</button></div></div>
+          <p class="note" id="projMsg"></p>
+        </div>
+        <div class="box" style="margin-top:14px" id="pfBox"></div>
+        <div class="box" style="margin-top:14px">
+          <h2>PrizePicks Fantasy Score projections</h2>
+          <p>PrizePicks <b>Fantasy Score</b> lines are a <b>market input</b>, not a DFS projection. They only become a projection if you pick PrizePicks or Blended as the source below, and then they're labeled MODEL ESTIMATE. FanDuel scoring is converted only when a Receptions line exists; otherwise the value stays UNCONVERTED and is not used unless you allow it. DraftKings yardage bonuses are not added. PrizePicks doesn't publish DFS ownership: ownership here is always Estimated. Only standard, pregame, full-game lines are read (no goblin, demon, promo or live lines).</p>
+          <div class="fld" style="max-width:360px"><label for="projSource">Active projection source</label><select id="projSource"><option value="csv">MY CSV (PrizePicks shown beside it)</option><option value="pp">PRIZEPICKS FANTASY SCORE</option><option value="blend">BLENDED (average of both)</option></select><small>PrizePicks never replaces your CSV unless you pick it here. Edit any player in the Player pool for a custom value.</small></div>
+          <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="ppRefresh" type="button">Refresh PrizePicks projections</button></div></div>
+          <p class="note" id="ppMsg"></p>
+          <p class="note">If auto-import is unavailable, upload or paste the PrizePicks projections data (JSON from PrizePicks, or a CSV with player, team, stat type, line and odds type columns).</p>
+          <input type="file" id="ppFile" accept=".json,.csv,.txt,application/json,text/csv" aria-label="PrizePicks projections file">
+          <textarea id="ppText" placeholder="Paste PrizePicks projections JSON or CSV here"></textarea>
+          <label class="check"><input type="checkbox" id="ppUnconv"> On FanDuel, also use Fantasy Score that cannot be converted (no Receptions line). They stay labeled UNCONVERTED.</label>
+          <div class="toolbar"><div class="grp"><button class="btn btn-primary" id="ppGo" type="button">Use these PrizePicks projections</button></div></div>
+          <div id="ppReport"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const TOPN=40;let SOFT=0;
+const POSL=['QB','RB','WR','TE','DST'], SKILL={RB:1,WR:1,TE:1};
+// your FLEX preference, kept separately for each site (both sites officially allow RB/WR/TE at FLEX)
+const FLEX_OK={dk:{RB:1,WR:1,TE:1},fd:{RB:1,WR:1,TE:1}};
+const SITES={
+  fd:{key:'fd',name:'FanDuel',cap:60000,minSal:59500,rbFloor:5000,def:'DEF',teamMax:4,minTeams:3,boomX:3,
+    note:'$60,000 cap · QB, 2 RB, 3 WR, TE, FLEX, DEF · max 4 per team',floorNote:'translated to FanDuel prices',
+    ppr:{QB:1,RB:1,WR:1,TE:1,DST:1},sal:{QB:[6800,17,380,6500,9800],RB:[5000,6,360,4500,9800],WR:[4500,5,440,4500,9500],TE:[4200,3,440,4000,8200],DST:[3200,5,300,3000,5200]}},
+  dk:{key:'dk',name:'DraftKings',cap:50000,minSal:49900,rbFloor:4500,def:'DST',teamMax:8,minTeams:2,boomX:4,
+    note:'$50,000 cap · QB, 2 RB, 3 WR, TE, FLEX, DST · players from 2+ games',floorNote:'straight from the book',
+    ppr:{QB:1,RB:1.06,WR:1.15,TE:1.12,DST:1},sal:{QB:[5600,17,300,4800,8200],RB:[4300,6,330,4000,9200],WR:[3200,5,400,3000,9200],TE:[2800,3,400,2500,8000],DST:[2600,5,260,2200,4000]}}
+};
+let SITE=SITES.fd,CAP=SITE.cap;
+const CV={QB:.40,RB:.55,WR:.62,TE:.70,DST:.75};
+const CONTEST={
+  massive:{lo:110,hi:135,min10:3,rnd:22,label:'Sunday Million class: 110–135% total ownership, 3 low-owned skill players.'},
+  large:{lo:120,hi:140,min10:2,rnd:20,label:'Large GPP: 120–140% total ownership, 2 low-owned skill players.'},
+  mid:{lo:135,hi:165,min10:2,rnd:15,label:'Mid GPP: 135–165% total ownership, 2 low-owned skill players.'},
+  small:{lo:0,hi:400,min10:1,rnd:10,label:'Small league: no ownership cap. Play the best plays and get different somewhere small.'}
+};
+// Lines snapshot fetched from ESPN's odds API (DraftKings lines) on Oct 4, 2026 at 12:35 PM ET.
+// The page also listens for newer lines in its shared data store (lines/<date>) and uses those when present.
+const FEED_SNAPSHOT={"2026-10-04":{date:"2026-10-04",fetchedAt:"2026-10-04T16:35:00Z",source:"ESPN odds API · DraftKings lines",games:[
+  {away:"IND",home:"WAS",kickoff:"2026-10-04T13:30Z",total:50.5,homeSpread:-1.5,details:"WSH -1.5"},
+  {away:"NE",home:"BUF",kickoff:"2026-10-04T17:00Z",total:49.5,homeSpread:-3,details:"BUF -3"},
+  {away:"NYJ",home:"CHI",kickoff:"2026-10-04T17:00Z",total:45.5,homeSpread:-8.5,details:"CHI -8.5"},
+  {away:"JAX",home:"CIN",kickoff:"2026-10-04T17:00Z",total:51.5,homeSpread:-2.5,details:"CIN -2.5"},
+  {away:"ARI",home:"NYG",kickoff:"2026-10-04T17:00Z",total:45.5,homeSpread:-7,details:"NYG -7"},
+  {away:"LAR",home:"PHI",kickoff:"2026-10-04T17:00Z",total:47.5,homeSpread:1.5,details:"LAR -1.5"},
+  {away:"GB",home:"TB",kickoff:"2026-10-04T17:00Z",total:47.5,homeSpread:1.5,details:"GB -1.5"},
+  {away:"TEN",home:"BAL",kickoff:"2026-10-04T17:00Z",total:47.5,homeSpread:-8.5,details:"BAL -8.5"},
+  {away:"DAL",home:"HOU",kickoff:"2026-10-04T17:00Z",total:47.5,homeSpread:-2.5,details:"HOU -2.5"},
+  {away:"MIA",home:"MIN",kickoff:"2026-10-04T20:05Z",total:43.5,homeSpread:-7.5,details:"MIN -7.5"},
+  {away:"KC",home:"LV",kickoff:"2026-10-04T20:25Z",total:43.5,homeSpread:5.5,details:"KC -5.5"},
+  {away:"DEN",home:"SF",kickoff:"2026-10-04T20:25Z",total:46.5,homeSpread:-2.5,details:"SF -2.5"},
+  {away:"LAC",home:"SEA",kickoff:"2026-10-04T20:25Z",total:45.5,homeSpread:-3,details:"SEA -3"},
+  {away:"DET",home:"CAR",kickoff:"2026-10-05T00:20Z",total:47.5,homeSpread:3,details:"DET -3"}
+]}};
+const SAMPLE_DATE="2026-10-04";
+
+/* ---------- state ---------- */
+const S={players:[],games:[],sample:true,sims:null,N:0,pstats:null,lineups:[],plans:[],res:null,field:null,fieldOwn:null,stale:false,running:false,
+  tab:'lineups',poolSort:{k:'salary',d:-1},poolPos:'ALL',poolQ:'',lineSort:'top1',expSort:{k:'exp',d:-1},fail:null};
+let PL=[];
+
+/* ---------- rng ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+let rand=mulberry32((Date.now()%2147483647)|0);
+function normalFrom(r){let sp=null;return()=>{if(sp!==null){const s=sp;sp=null;return s}let u,v,s;do{u=r()*2-1;v=r()*2-1;s=u*u+v*v}while(s>=1||s===0);const m=Math.sqrt(-2*Math.log(s)/s);sp=v*m;return u*m}}
+let randn=normalFrom(()=>rand());
+const tick=()=>new Promise((res,rej)=>setTimeout(()=>{if(S.cancel||(typeof SD!=='undefined'&&SD.cancel))rej(new Error('CANCELLED'));else res()},0));
+function shuffle(a){for(let i=a.length-1;i>0;i--){const j=Math.floor(rand()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+
+/* ---------- helpers ---------- */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money=n=>'$'+Math.round(n).toLocaleString('en-US');
+const f1=n=>(Math.round(n*10)/10).toFixed(1);
+const pc=(x,d=0)=>(x*100).toFixed(d)+'%';
+const posLabel=p=>p==='DST'?SITE.def:p;
+function shortName(p){if(p.pos==='DST')return p.name;const parts=p.name.trim().split(/\s+/);return parts.length>1?parts[0][0]+'. '+parts.slice(1).join(' '):p.name}
+
+/* ---------- sample slate (fictional players, generated from the Vegas lines) ---------- */
+function genSample(){
+  const R=mulberry32(20261004),N=normalFrom(R);
+  const FIRST=['Jalen','Marcus','Tre','Darius','Caleb','Nolan','Andre','Elliot','Victor','Reid','Xavier','Brady','Isaiah','Theo','Miles','Jace','Owen','Dorian','Keyon','Amari','Lionel','Grant','Cam','Ty','Bryce','Rashad','Ellis','Nate','Luca','Corey','Shane','Pierce','Gabe','Kai','Omar','Hunter','Ben','Aaron','Wade','Desmo
